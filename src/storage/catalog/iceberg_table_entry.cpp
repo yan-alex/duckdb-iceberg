@@ -75,14 +75,27 @@ void IcebergTableEntry::PrepareIcebergScanFromEntry(ClientContext &context) cons
 			D_ASSERT(substrings.size() == 6);
 			auto region = substrings[3];
 			auto endpoint = "s3." + region + ".amazonaws.com";
-			info.options = {{"key_id", kv_secret.TryGetValue("key_id").ToString()},
-			                {"secret", kv_secret.TryGetValue("secret").ToString()},
-			                {"session_token", kv_secret.TryGetValue("session_token").IsNull()
-			                                      ? ""
-			                                      : kv_secret.TryGetValue("session_token").ToString()},
-			                {"region", region},
-			                {"endpoint", endpoint}};
-		}
+
+			auto http_secret_entry = IcebergCatalog::GetHTTPSecret(context, sigv4_auth.secret);
+			auto http_kv_secret = dynamic_cast<const KeyValueSecret &>(*http_secret_entry->secret);
+
+			info.options = {
+			    {"key_id", kv_secret.TryGetValue("key_id").ToString()},
+			    {"secret", kv_secret.TryGetValue("secret").ToString()},
+			    {"session_token", kv_secret.TryGetValue("session_token").IsNull()
+			                          ? ""
+			                          : kv_secret.TryGetValue("session_token").ToString()},
+			    {"region", region},
+			    {"endpoint", endpoint},
+			    {"http_proxy", http_kv_secret.TryGetValue("http_proxy").IsNull()
+			                       ? ""
+			                       : http_kv_secret.TryGetValue("http_proxy").ToString()},
+			    {"verify_ssl",
+			     http_kv_secret.TryGetValue("verify_ssl").IsNull()
+			         ? true
+			         : http_kv_secret.TryGetValue("verify_ssl").DefaultCastAs(LogicalType::BOOLEAN).GetValue<bool>()}};
+		};
+
 		(void)secret_manager.CreateSecret(context, info);
 		// if there is no key_id, secret, or token in the info. log that vended credentials has not worked
 		if (info.options.find("key_id") == info.options.end() && info.options.find("secret") == info.options.end() &&
