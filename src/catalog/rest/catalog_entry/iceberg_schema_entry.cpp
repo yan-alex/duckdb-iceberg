@@ -288,6 +288,28 @@ static void VerifyNotNullConstraint(ClientContext &context, IcebergTableInformat
 	}
 }
 
+static void ApplySchemaUpdate(IcebergTableInformation &updated_table, IcebergTransactionData &transaction_data,
+                              shared_ptr<IcebergTableSchema> new_schema) {
+	// Check if the resulting schema matches an existing one (e.g. reverting a previous alter)
+	// If so, reuse it — the server deduplicates add-schema by structure, so adding a duplicate
+	// is a noop and set-current-schema can reference the existing id directly.
+	for (auto &[id, existing] : updated_table.table_metadata.GetSchemas()) {
+		if (new_schema->Equals(*existing)) {
+			auto match_id = static_cast<int32_t>(id);
+			updated_table.CreateSchemaVersion(*existing);
+			transaction_data.TableAddSchema(match_id);
+			updated_table.table_metadata.SetCurrentSchemaId(match_id);
+			return;
+		}
+	}
+
+	auto new_schema_id = new_schema->schema_id;
+	updated_table.CreateSchemaVersion(*new_schema);
+	transaction_data.TableAddSchema(new_schema_id);
+	updated_table.table_metadata.AddSchema(std::move(new_schema));
+	updated_table.table_metadata.SetCurrentSchemaId(new_schema_id);
+}
+
 void IcebergSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) {
 	if (info.type != AlterType::ALTER_TABLE) {
 		throw NotImplementedException("Only ALTER TABLE is supported for Iceberg");
@@ -379,13 +401,7 @@ void IcebergSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) 
 		auto new_schema = current_schema.Copy();
 		new_schema->schema_id++;
 		new_schema->columns.push_back(std::move(new_iceberg_column));
-		auto new_schema_id = new_schema->schema_id;
-		// Update the Table Metadata to have our new schema
-		updated_table.CreateSchemaVersion(*new_schema);
-		transaction_data.TableAddSchema(new_schema_id);
-
-		updated_table.table_metadata.AddSchema(std::move(new_schema));
-		updated_table.table_metadata.SetCurrentSchemaId(new_schema_id);
+		ApplySchemaUpdate(updated_table, transaction_data, std::move(new_schema));
 		return;
 	}
 	case AlterTableType::REMOVE_COLUMN: {
@@ -422,12 +438,7 @@ void IcebergSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) 
 			throw CatalogException("Cannot drop column: table '%s' only has one column remaining!", table_entry.name);
 		}
 
-		auto new_schema_id = new_schema->schema_id;
-		// Update the Table Metadata to have our new schema
-		updated_table.CreateSchemaVersion(*new_schema);
-		transaction_data.TableAddSchema(new_schema_id);
-		updated_table.table_metadata.AddSchema(std::move(new_schema));
-		updated_table.table_metadata.SetCurrentSchemaId(new_schema_id);
+		ApplySchemaUpdate(updated_table, transaction_data, std::move(new_schema));
 		return;
 	}
 	case AlterTableType::ALTER_COLUMN_TYPE: {
@@ -449,13 +460,7 @@ void IcebergSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) 
 		VerifySchemaEvolution(updated_table.table_metadata, column, change_type_info.target_type);
 		column.type = change_type_info.target_type;
 
-		auto new_schema_id = new_schema->schema_id;
-		// Update the Table Metadata to have our new schema
-		updated_table.CreateSchemaVersion(*new_schema);
-		transaction_data.TableAddSchema(new_schema_id);
-
-		updated_table.table_metadata.AddSchema(std::move(new_schema));
-		updated_table.table_metadata.SetCurrentSchemaId(new_schema_id);
+		ApplySchemaUpdate(updated_table, transaction_data, std::move(new_schema));
 		return;
 	}
 	case AlterTableType::SET_NOT_NULL: {
@@ -476,13 +481,26 @@ void IcebergSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) 
 
 		column.required = true;
 
-		auto new_schema_id = new_schema->schema_id;
-		// Update the Table Metadata to have our new schema
-		updated_table.CreateSchemaVersion(*new_schema);
-		transaction_data.TableAddSchema(new_schema_id);
+		ApplySchemaUpdate(updated_table, transaction_data, std::move(new_schema));
+		return;
+	}
+	case AlterTableType::DROP_NOT_NULL: {
+		auto &set_not_null_info = alter_table_info.Cast<DropNotNullInfo>();
+		auto &column_name = set_not_null_info.column_name;
 
-		updated_table.table_metadata.AddSchema(std::move(new_schema));
-		updated_table.table_metadata.SetCurrentSchemaId(new_schema_id);
+		auto new_schema = current_schema.Copy();
+		new_schema->schema_id++;
+
+		auto column_p = new_schema->GetMutableFromPath({column_name}, nullptr);
+		if (!column_p) {
+			throw CatalogException("Column with name '%s' does not exist on the table '%s', DROP NOT NULL failed",
+			                       column_name, table_entry.name);
+		}
+		auto &column = *column_p;
+
+		column.required = false;
+
+		ApplySchemaUpdate(updated_table, transaction_data, std::move(new_schema));
 		return;
 	}
 	default: {
