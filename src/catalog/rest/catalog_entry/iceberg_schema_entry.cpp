@@ -50,7 +50,7 @@ bool IcebergSchemaEntry::HandleCreateConflict(CatalogTransaction &transaction, C
 		// We cannot create (or stage create) a table replace within a transaction yet.
 		// FIXME: With Snapshot operation type overwrite, you can handle create or replace for tables.
 		auto &iceberg_transaction = GetICTransaction(transaction);
-		auto table_key = IcebergTableInformation::GetTableKey(namespace_items, entry_name);
+		auto table_key = IcebergTableInformation::GetTableQualifiedName(namespace_items, entry_name);
 		auto latest_state = iceberg_transaction.GetLatestTableState(table_key);
 		if (latest_state && latest_state->IsDroppedOrRenamed()) {
 			auto &ic_catalog = catalog.Cast<IcebergCatalog>();
@@ -446,7 +446,7 @@ void IcebergSchemaEntry::Alter(CatalogTransaction transaction, AlterInfo &info) 
 			//! The table exists at this point, check if it was deleted/renamed in the transaction
 			auto &other_table_entry = other_catalog_entry->Cast<IcebergTableEntry>();
 			auto &other_table_info = other_table_entry.table_info;
-			auto other_table_key = other_table_info.GetTableKey();
+			auto other_table_key = other_table_info.GetTableQualifiedName();
 			auto state = irc_transaction.GetLatestTableState(other_table_key);
 			if (!state || state->IsAlive()) {
 				throw CatalogException("Table with name \"%s\" already exists!", new_name);

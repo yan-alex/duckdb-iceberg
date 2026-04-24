@@ -503,7 +503,7 @@ optional_ptr<CatalogEntry> IcebergTableInformation::GetLatestSchema(ClientContex
 	return GetSchemaVersion(context, nullptr);
 }
 
-string IcebergTableInformation::GetTableKey(const vector<string> &namespace_items, const string &table_name) {
+string IcebergTableInformation::GetTableQualifiedName(const vector<string> &namespace_items, const string &table_name) {
 	if (namespace_items.empty()) {
 		return table_name;
 	}
@@ -511,8 +511,12 @@ string IcebergTableInformation::GetTableKey(const vector<string> &namespace_item
 	return schema_component.encoded + "." + table_name;
 }
 
-string IcebergTableInformation::GetTableKey() const {
-	return GetTableKey(schema.namespace_items, name);
+string IcebergTableInformation::GetTableQualifiedName() const {
+	return GetTableQualifiedName(schema.namespace_items, name);
+}
+
+string IcebergTableInformation::GetTableUuid() const {
+	return table_metadata.table_uuid;
 }
 
 IcebergSnapshotLookup IcebergTableInformation::GetSnapshotLookup(IcebergTransaction &iceberg_transaction) const {
@@ -576,7 +580,7 @@ bool IcebergTableInformation::HasTransactionUpdates() const {
 
 IcebergTableInformation IcebergTableInformation::Copy(ClientContext &context) const {
 	auto ret = IcebergTableInformation(catalog, schema, name);
-	auto table_key = ret.GetTableKey();
+	auto table_key = ret.GetTableQualifiedName();
 	{
 		lock_guard<std::mutex> cache_lock(catalog.table_request_cache.Lock());
 		auto cached_result = catalog.table_request_cache.Get(context, table_key, cache_lock, false);
@@ -641,7 +645,7 @@ IcebergTableInformation IcebergTableInformation::Copy(IcebergTransaction &iceber
 			snapshot_info = ret.table_metadata.GetSnapshot(snapshot_lookup);
 			if (!snapshot_info.snapshot) {
 				throw TransactionException("Table %s is already outdated. Please restart your transaction",
-				                           GetTableKey());
+				                           GetTableQualifiedName());
 			}
 
 			auto &snapshot = snapshot_info.snapshot;

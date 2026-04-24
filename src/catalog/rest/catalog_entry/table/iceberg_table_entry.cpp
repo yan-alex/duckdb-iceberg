@@ -202,7 +202,7 @@ TableFunction IcebergTableEntry::GetScanFunction(ClientContext &context, unique_
 		// The table is not empty, but GetSnapshot is asking for table state before the first snapshot
 		// table creation has no snapshot, so we return this error message
 		throw InvalidConfigurationException("Table %s does not have a reachable state in this transaction",
-		                                    table_info.GetTableKey());
+		                                    table_info.GetTableQualifiedName());
 	}
 
 	auto &fs = FileSystem::GetFileSystem(context);

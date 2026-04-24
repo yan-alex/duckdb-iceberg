@@ -34,7 +34,7 @@ bool IcebergTableSet::FillEntry(ClientContext &context, IcebergTableInformation 
 	}
 
 	auto &ic_catalog = catalog.Cast<IcebergCatalog>();
-	auto table_key = table.GetTableKey();
+	auto table_key = table.GetTableQualifiedName();
 
 	// Only check cache if MAX_TABLE_STALENESS option is set
 	if (ic_catalog.attach_options.max_table_staleness_micros.IsValid()) {
@@ -86,7 +86,7 @@ void IcebergTableSet::Scan(ClientContext &context, const std::function<void(Cata
 	auto table_namespace = schema_component.encoded;
 	for (auto &entry : entries) {
 		auto &table_info = *entry.second;
-		auto table_key = table_info.GetTableKey();
+		auto table_key = table_info.GetTableQualifiedName();
 		iceberg_transaction.tables[table_key] = entry.second;
 
 		if (table_info.dummy_entry) {
@@ -209,7 +209,7 @@ IcebergTableInformation &IcebergTableSet::CreateNewEntry(ClientContext &context,
 		               .GetValue<string>();
 	}
 
-	auto key = IcebergTableInformation::GetTableKey(schema.namespace_items, info.table);
+	auto key = IcebergTableInformation::GetTableQualifiedName(schema.namespace_items, info.table);
 	auto &alter_update = iceberg_transaction.GetOrCreateAlter();
 	auto &table_info = alter_update.CreateTable(key, IcebergTableInformation(catalog, schema, info.table));
 	// auto &table_info = emplace_res.first->second;
@@ -289,7 +289,7 @@ optional_ptr<CatalogEntry> IcebergTableSet::GetEntry(ClientContext &context, con
 	auto &iceberg_transaction = IcebergTransaction::Get(context, catalog);
 	const auto &table_name = lookup.GetEntryName();
 	// first check transaction entries
-	const auto table_key = IcebergTableInformation::GetTableKey(schema.namespace_items, table_name);
+	const auto table_key = IcebergTableInformation::GetTableQualifiedName(schema.namespace_items, table_name);
 	auto latest_state = iceberg_transaction.GetLatestTableState(table_key);
 
 	auto at = lookup.GetAtClause();
