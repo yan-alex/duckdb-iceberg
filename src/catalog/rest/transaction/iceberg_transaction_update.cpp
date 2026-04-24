@@ -16,7 +16,7 @@ IcebergTransactionAlterUpdate::~IcebergTransactionAlterUpdate() {
 }
 
 IcebergTableInformation &IcebergTransactionAlterUpdate::GetOrInitializeTable(const IcebergTableInformation &table) {
-	auto table_key = table.GetTableQualifiedName();
+	auto table_key = table.GetTableKey();
 	auto it = updated_tables.find(table_key);
 	if (it == updated_tables.end()) {
 		it = updated_tables.emplace(table_key, table.Copy(transaction)).first;

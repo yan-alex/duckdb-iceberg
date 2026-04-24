@@ -507,7 +507,7 @@ static yyjson_mut_val *CreateRenameRequestJSON(yyjson_mut_doc *doc, const Iceber
 void IcebergTransaction::DoTableRename(IcebergTransactionRenameUpdate &rename_update, ClientContext &context) {
 	auto &original_table = rename_update.table;
 	auto &schema = original_table.schema;
-	auto table_key = original_table.GetTableQualifiedName();
+	auto table_key = original_table.GetTableKey();
 	auto &table_name = original_table.name;
 	auto new_name = rename_update.new_name;
 
@@ -535,7 +535,7 @@ void IcebergTransaction::DoTableDeletes(IcebergTransactionDeleteUpdate &delete_u
 	auto &ic_catalog = catalog.Cast<IcebergCatalog>();
 	auto &table = delete_update.deleted_table;
 	auto schema_key = table.schema.name;
-	auto table_key = table.GetTableQualifiedName();
+	auto table_key = table.GetTableKey();
 	auto &table_name = table.name;
 	IRCAPI::CommitTableDelete(context, catalog, table.schema.namespace_items, table_name);
 	// remove the load table result
@@ -695,7 +695,7 @@ IcebergTransactionTableState &IcebergTransaction::SetLatestTableState(const stri
 
 IcebergTransactionTableState &IcebergTransaction::SetLatestTableState(IcebergTableInformation &table,
                                                                       IcebergTableStatus status) {
-	auto table_key = table.GetTableQualifiedName();
+	auto table_key = table.GetTableKey();
 	auto &state = SetLatestTableState(table_key, status);
 	state.SetTable(table);
 	return state;
@@ -712,7 +712,7 @@ IcebergTransactionAlterUpdate &IcebergTransaction::GetOrCreateAlter() {
 }
 
 IcebergTableInformation &IcebergTransaction::DeleteTable(IcebergTableInformation &table) {
-	auto table_key = table.GetTableQualifiedName();
+	auto table_key = table.GetTableKey();
 	auto state = GetLatestTableState(table_key);
 
 	unique_ptr<IcebergTransactionDeleteUpdate> delete_update;
@@ -729,7 +729,7 @@ IcebergTableInformation &IcebergTransaction::DeleteTable(IcebergTableInformation
 }
 
 IcebergTableInformation &IcebergTransaction::RenameTable(IcebergTableInformation &table, const string &new_name) {
-	auto table_key = table.GetTableQualifiedName();
+	auto table_key = table.GetTableKey();
 	auto state = GetLatestTableState(table_key);
 	if (state) {
 		auto &original_table = state->GetInfo();
@@ -754,7 +754,7 @@ IcebergTableInformation &IcebergTransaction::RenameTable(IcebergTableInformation
 	auto &client_context = *locked_context;
 	//! FIXME: just like the other place, this can easily go wrong
 	//! Migrate the MetadataCache
-	auto new_table_key = new_table.GetTableQualifiedName();
+	auto new_table_key = new_table.GetTableKey();
 	auto &table_request_cache = catalog.table_request_cache;
 	lock_guard<mutex> cache_guard(table_request_cache.Lock());
 	auto cache = table_request_cache.Get(client_context, table_key, cache_guard, false);
